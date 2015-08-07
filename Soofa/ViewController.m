@@ -33,50 +33,35 @@
         [[self locationManager] requestWhenInUseAuthorization];
     }
     
-    MKPointAnnotation *benchAnnotation;
-    benchAnnotation = [[MKPointAnnotation alloc]init];
-    benchAnnotation.coordinate = CLLocationCoordinate2DMake(42.368523, -71.100102);
-    benchAnnotation.title = @"Maria";
-    benchAnnotation.subtitle = @"Lives in Sennott Park Cambridge, MA";
+    [[self locationManager] setDesiredAccuracy:kCLLocationAccuracyBest];
+    [[self locationManager] startUpdatingLocation];
     
-    NSURLRequest *request = [[NSURLRequest alloc] initWithURL:[NSURL URLWithString:@"https://s3.amazonaws.com/api.soofa.io/devices.geojson"]];
+    AFHTTPRequestOperationManager *manager = [AFHTTPRequestOperationManager manager];
+    [manager GET:@"https://s3.amazonaws.com/api.soofa.io/devices.geojson" parameters:nil success:^(AFHTTPRequestOperation *operation, id responseObject) {
+        NSLog(@"JSON: %@", responseObject);
+        NSArray *features = [responseObject objectForKey:@"features"];
+        
+        for(NSDictionary *feature in features) {
+            MKPointAnnotation *benchAnnotation = [[MKPointAnnotation alloc]init];
+            
+            benchAnnotation.title = [[feature objectForKey:@"properties"] objectForKey:@"name"];
+            benchAnnotation.subtitle = [[feature objectForKey:@"properties"] objectForKey:@"description"];
+            
+            NSArray *coordinates = [[feature objectForKey:@"geometry"] objectForKey:@"coordinates"];
+            benchAnnotation.coordinate = CLLocationCoordinate2DMake([coordinates[0] doubleValue], [coordinates[1] doubleValue]);
+
+            [self.mapView addAnnotation:benchAnnotation];
+        }
+    } failure:^(AFHTTPRequestOperation *operation, NSError *error) {
+        NSLog(@"Error: %@", error);
+    }];
     
-    __block NSDictionary *json;
-    [NSURLConnection sendAsynchronousRequest:request
-                                       queue:[NSOperationQueue mainQueue]
-                           completionHandler:^(NSURLResponse *response, NSData *data, NSError *connectionError) {
-                               json = [NSJSONSerialization JSONObjectWithData:data
-                                                                      options:0
-                                                                        error:nil];
-                               NSLog(@"Async JSON: %@", json);
-                           }];
-    
-    [self.mapView addAnnotation:benchAnnotation];
+    [self.mapView showAnnotations:self.mapView.annotations animated:YES];
 }
 
 - (void)didReceiveMemoryWarning {
     [super didReceiveMemoryWarning];
     // Dispose of any resources that can be recreated.
-}
-
-- (void)viewWillAppear:(BOOL)animated
-{
-    [self zoomMapViewToFitAnnotations:self.mapView animated:animated];
-    //or maybe you would do the call above in the code path that sets the annotations array
-}
-
-#pragma mark Delegate Methods
-
--(void)mapView:(MKMapView *)mapView annotationView:(MKAnnotationView *)view calloutAccessoryControlTapped:(UIControl *)control {
-    id <MKAnnotation> annotation = [view annotation];
-    
-    if ([annotation isKindOfClass:[MKPointAnnotation class]]) {
-        NSLog(@"Clicked Pizza Shop");
-    }
-    
-    UIAlertView *alertView = [[UIAlertView alloc] initWithTitle:@"Disclosure Pressed" message:@"Click Cancel to Go Back" delegate:self cancelButtonTitle:@"Cancel" otherButtonTitles:@"OK", nil];
-    
-    [alertView show];
 }
 
 - (MKAnnotationView *)mapView:(MKMapView *)mapView viewForAnnotation:(id <MKAnnotation>)annotation
@@ -99,10 +84,6 @@
             pinView.image = [UIImage imageNamed:@"bench-base-standalone-icon"];
             pinView.calloutOffset = CGPointMake(0, 0);
             
-            // Add a detail disclosure button to the callout.
-            UIButton* rightButton = [UIButton buttonWithType:UIButtonTypeDetailDisclosure];
-            pinView.rightCalloutAccessoryView = rightButton;
-            
             // Add an image to the left callout.
             UIImageView *iconView = [[UIImageView alloc] initWithImage:[UIImage imageNamed:@"bench-base-standalone-icon"]];
             pinView.leftCalloutAccessoryView = iconView;
@@ -112,21 +93,6 @@
         return pinView;
     }
     return nil;
-}
-
-#pragma mark Zoom
-
-- (void)zoomMapViewToFitAnnotations:(MKMapView *)mapView animated:(BOOL)animated
-{
-    CLLocation *location = [self.locationManager location];
-    
-    NSMutableArray *annotations = [[NSMutableArray alloc] initWithObjects:location, nil];
-    [annotations addObjectsFromArray:mapView.annotations];
-    
-    int count = [annotations count];
-    if ( count == 0) { return; } //bail if no annotations
-    
-    [self.mapView showAnnotations:self.mapView.annotations animated:YES];
 }
 
 @end
